@@ -13,7 +13,7 @@ from transformers import BertTokenizer, TFBertModel, BertConfig
 
 
 max_len = 80
-configuration = BertConfig()
+#configuration = BertConfig()
 data_csv = r".\data\kaggle_ner\ner_dataset.csv"
 
 # Save the slow pretrained tokenizer
@@ -59,23 +59,10 @@ def create_model(num_tags):
     return model
 
 
-def process_csv(data_path):
-    df = pd.read_csv(data_path, encoding="latin-1")
-    df.loc[:, "Sentence #"] = df["Sentence #"].fillna(method="ffill")
-    enc_tag = preprocessing.LabelEncoder()
-    df.loc[:, "Tag"] = enc_tag.fit_transform(df["Tag"])
-    sentences = df.groupby("Sentence #")["Word"].apply(list).values
-    tag = df.groupby("Sentence #")["Tag"].apply(list).values
-    return sentences, tag, enc_tag
-
-
-
 ############################
 # process conll
 ############################
-# sentences = np array, shape(47959,), array([list(['Thousands', 'blah']), list(['word', 'word',...]) ])
-# tags = wie sentences     array([list([16, 16, 7, 16, 16 ...
-# tag_encoder =
+
 def prepro_conll():
     conll = pd.read_csv(r'.\data\conll\train.txt', delimiter=' ', header=None, skiprows=2, skip_blank_lines=False, usecols=[0,3], names=['word', 'label'])
     tag_encoder = preprocessing.LabelEncoder()
@@ -122,7 +109,8 @@ texts = [texts[i] for i in good_examples]
 texts = np.array(texts)
 tags = [tags[i] for i in good_examples]
 tags = [tag_encoder.transform(sample) for sample in tags]
-
+texts = texts[64:128]
+tags = tags[64:128]
 
 ############################
 def create_inputs_targets_conll(sentences, tags, tag_encoder):
@@ -179,7 +167,10 @@ def create_inputs_targets_conll(sentences, tags, tag_encoder):
 x_train, y_train, tag_encoder, num_tags = create_inputs_targets_conll(texts, tags , tag_encoder)
 model = create_model(num_tags)
 
-model.fit(x_train, y_train, epochs=1, verbose=1, batch_size=16, validation_split=0.1)
+model.fit(x_train, y_train, epochs=10, verbose=1, batch_size=16, validation_split=0.1)
+
+print("pause")
+
 
 
 def create_test_input_from_text(texts):
@@ -223,13 +214,36 @@ def create_test_input_from_text(texts):
     ]
     return x, n_tokens
 
+###################
+# eval
+###################
+pred_test = model.predict(x_train)
 
+
+
+y_train_flat = [v  for sent in list(y_train) for v in sent]
+valid_index_y_train = [i for i, v in enumerate(y_train_flat) if v != 9]
+y_train_flat = [y_train_flat[i] for i in valid_index_y_train]
+
+pred_test_flat = np.reshape(pred_test, [64*80, 10])
+pred_test_flat = [pred_test_flat[i] for i in valid_index_y_train]
+pred_test_flat = np.argmax(pred_test_flat, axis=1)
+
+
+from sklearn.metrics import confusion_matrix, classification_report
+from pprint import  pprint
+print(confusion_matrix(pred_test_flat, y_train_flat))
+report = classification_report(pred_test_flat, y_train_flat)
+pprint(report)
+
+
+##################
 test_inputs = ["alex lives in london"]
 x_test, n_tokens = create_test_input_from_text(test_inputs)
 print('input tokens')
 print(x_test[0][0][:n_tokens])
-pred_test = model.predict(x_test)
-pred_tags = np.argmax(pred_test, 2)[0][:n_tokens]  # ignore predictions of padding tokens
+pred_test = model.predict(x_train)
+pred_tags = np.argmax(pred_test, 2)[1][:n_tokens]  # ignore predictions of padding tokens
 
 # create dictionary of tag and its index
 le_dict = dict(zip(tag_encoder.transform(tag_encoder.classes_), tag_encoder.classes_))

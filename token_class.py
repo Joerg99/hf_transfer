@@ -1,30 +1,3 @@
-'''
-follows tutorial from https://huggingface.co/transformers/custom_datasets.html#token-classification-with-w-nut-emerging-entities
-poor performance in general
-probably because of class imbalance? Mostly words are of class 'O'
-
-Boosts performance:
-    - set trasformer to trainable
-    - mask some of the 'O' words with -100
-    with: removal of num_all_O / 1.3
-
-    - performance without shoot out of 'O' and only B-Ent laebel
-    [[   0    0]
-     [ 358 1067]]
-    and with shoot out:
-    [[777 179]
-     [260 167]]
-
-General....
-    - hard to evaluate on training data. word pieces and masking is annoying
-    - model.compile(metric=something) does not work out of the box
-To do:
-    - final dense layer is... very simple -> replace with bi-lstm or such
-    - data very simplified. should add more labels
-
-'''
-
-
 from pathlib import Path
 import re
 '''
@@ -236,22 +209,22 @@ import pickle
 val_labels = flatten_lol(val_labels)
 evaluation_history = []
 train_labels_4_eval = flatten_lol(train_labels)
-#for epoch in range(8):
-#print('epoch: ',epoch)
+for epoch in range(8):
+    print('epoch: ',epoch)
 
-model.fit(train_dataset.shuffle(64).batch(16), batch_size=16 , verbose = 1, epochs=10)  #, class_weight={0:5, 1:5,2:1})
-predictions = model.predict(train_dataset)
+    model.fit(train_dataset.shuffle(64).batch(16), batch_size=16 , verbose = 1)  #, class_weight={0:5, 1:5,2:1})
+    predictions = model.predict(val_dataset)
 
-good_indexes = [i for i, l in enumerate(train_labels_4_eval) if l != -100]
+    good_indexes = [i for i, l in enumerate(val_labels) if l != -100]
 
-label_post = [train_labels_4_eval[j] for j in good_indexes]
-list_preds = []
-for logi in predictions['logits']:
-    list_preds.append(np.argmax(logi))
-pred_post = [list_preds[j] for j in good_indexes]
-print(confusion_matrix(pred_post, label_post))
-report = classification_report(pred_post, label_post)
-pprint(report)
+    label_post = [val_labels[j] for j in good_indexes]
+    list_preds = []
+    for logi in predictions['logits']:
+        list_preds.append(np.argmax(logi))
+    pred_post = [list_preds[j] for j in good_indexes]
+    print(confusion_matrix(pred_post, label_post))
+    report = classification_report(pred_post, label_post)
+    pprint(report)
 
 pickle.dump(evaluation_history , open('no_shoot_out_all_layers_train_lr_5e5.pickle', 'wb'))
 print('staying alive')
