@@ -9,7 +9,7 @@ from tensorflow import keras
 from tensorflow.keras import layers
 from sklearn import preprocessing
 from tokenizers import BertWordPieceTokenizer
-from transformers import BertTokenizer, TFBertModel, BertConfig
+from transformers import BertTokenizer, TFBertModel, BertConfig, TFDistilBertModel, DistilBertTokenizer
 
 
 max_len = 80
@@ -25,6 +25,7 @@ slow_tokenizer.save_pretrained(save_path)
 
 # Load the fast tokenizer from saved file
 tokenizer = BertWordPieceTokenizer("bert_base_uncased/vocab.txt", lowercase=True)
+#tokenizer = DistilBertTokenizer(vocab_file="bert_base_uncased/vocab.txt", do_lower_case=True)
 
 loss_object = tf.keras.losses.SparseCategoricalCrossentropy(from_logits=False, reduction=tf.keras.losses.Reduction.NONE)
 
@@ -41,6 +42,7 @@ def masked_ce_loss(real, pred):
 def create_model(num_tags):
     ## BERT encoder
     encoder = TFBertModel.from_pretrained("bert-base-uncased")
+    #encoder = TFDistilBertModel.from_pretrained("bert-base-uncased")
 
     ## NER Model
     input_ids = layers.Input(shape=(max_len,), dtype=tf.int32)
@@ -55,7 +57,8 @@ def create_model(num_tags):
         outputs=[tag_logits],
     )
     optimizer = keras.optimizers.Adam(lr=3e-5)
-    model.compile(optimizer=optimizer, loss=masked_ce_loss, metrics=['accuracy'])
+
+    model.compile(optimizer=optimizer, loss=masked_ce_loss, metrics=[tf.keras.metrics.SparseTopKCategoricalAccuracy(k=1)])
     return model
 
 
@@ -109,8 +112,10 @@ texts = [texts[i] for i in good_examples]
 texts = np.array(texts)
 tags = [tags[i] for i in good_examples]
 tags = [tag_encoder.transform(sample) for sample in tags]
-texts = texts[64:128]
-tags = tags[64:128]
+texts_train = texts[:128]
+tags_train = tags[:128]
+texts_eval = texts[128:192]
+tags_eval = tags[128:192]
 
 ############################
 def create_inputs_targets_conll(sentences, tags, tag_encoder):
@@ -164,10 +169,35 @@ def create_inputs_targets_conll(sentences, tags, tag_encoder):
     return x, y, tag_encoder, num_tags
 
 
-x_train, y_train, tag_encoder, num_tags = create_inputs_targets_conll(texts, tags , tag_encoder)
+x_train, y_train, tag_encoder, num_tags = create_inputs_targets_conll(texts_train, tags_train , tag_encoder)
+x_eval, y_eval, _ , _ = create_inputs_targets_conll(texts_eval, tags_eval, tag_encoder)
 model = create_model(num_tags)
+from sklearn.metrics import confusion_matrix, classification_report
+from pprint import pprint
 
-model.fit(x_train, y_train, epochs=10, verbose=1, batch_size=16, validation_split=0.1)
+y_eval_flat = [v for sent in list(y_eval) for v in sent]
+valid_index_y_eval = [i for i, v in enumerate(y_eval_flat) if v != num_tags]
+y_eval_flat = [y_eval_flat[i] for i in valid_index_y_eval]
+print('uff')
+####################
+# Training
+####################
+for epoch in range(20):
+    print('epoch: ', epoch)
+    model.fit(x_train, y_train, verbose=1, batch_size=16, validation_split=0.1)
+    #############
+    #eval
+    #############
+    pred_test = model.predict(x_eval)
+
+    pred_eval_flat = np.reshape(pred_test, [pred_test.shape[0] * pred_test.shape[1], pred_test.shape[2]])
+    pred_eval_flat = [pred_eval_flat[i] for i in valid_index_y_eval]
+    pred_eval_flat = np.argmax(pred_eval_flat, axis=1)
+
+
+    print(confusion_matrix(pred_eval_flat, y_eval_flat))
+    report = classification_report(pred_eval_flat, y_eval_flat)
+    pprint(report)
 
 print("pause")
 
@@ -218,8 +248,6 @@ def create_test_input_from_text(texts):
 # eval
 ###################
 pred_test = model.predict(x_train)
-
-
 
 y_train_flat = [v  for sent in list(y_train) for v in sent]
 valid_index_y_train = [i for i, v in enumerate(y_train_flat) if v != 9]

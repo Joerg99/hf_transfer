@@ -90,7 +90,7 @@ fast_tokenizer = BertWordPieceTokenizer('vocab.txt', lowercase=False)
 
 #transformer_layer = (transformers.TFDistilBertModelForTokenClassification.from_pretrained('distilbert-base-multilingual-cased'))
 
-transformer_layer = transformers.TFBertModel.from_pretrained('bert-base-uncased') -->possible alternative
+transformer_layer = transformers.TFBertModel.from_pretrained('bert-base-uncased') #-->possible alternative
 model = build_model(transformer_layer, max_len=MAX_LEN)
 #print(model.summary())
 train_x = fast_encode(train_x, tokenizer=fast_tokenizer, maxlen=MAX_LEN)
